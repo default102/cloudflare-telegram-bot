@@ -47,17 +47,17 @@ docker run -d --restart=always \
   -e TG_TOKEN="你的BotToken" \
   -e ALLOWED_USER_ID="你的数字ID" \
   -e CF_API_TOKEN="你的CFToken" \
-  ghcr.io/你的用户名/cloudflare-telegram-bot:latest
+  ghcr.io/default102/cloudflare-telegram-bot:latest
 ```
 
 (注：你需要先构建镜像或使用 GitHub Actions 自动构建的镜像)
 
 ## 自动构建 (GitHub Actions)
 
-本项目包含 GitHub Actions 配置。只需将代码推送到 GitHub 仓库，它会自动构建 Docker 镜像并发布到 GitHub Container Registry (ghcr.io)。
+本项目包含 GitHub Actions 配置。只需将代码推送到 GitHub 仓库 [default102/cloudflare-telegram-bot](https://github.com/default102/cloudflare-telegram-bot)，它会自动构建 Docker 镜像并发布到 GitHub Container Registry (ghcr.io)。
 
 1.  Push 代码到 GitHub。
-2.  默认情况下，镜像会发布到 `ghcr.io/<你的用户名>/cloudflare-telegram-bot:latest`。
+2.  默认情况下，镜像会发布到 `ghcr.io/default102/cloudflare-telegram-bot:latest`。
 3.  确保在 GitHub 仓库设置中开启了 Actions 权限。
 
 ## 项目结构

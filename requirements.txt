@@ -1,4 +1,4 @@
 python-telegram-bot[job-queue]
-cloudflare
+python-cloudflare
 pydantic-settings
 loguru

@@ -1,28 +1,63 @@
 import asyncio
-import CloudFlare
+from cloudflare import Cloudflare
 from bot.config import settings
 
 class CloudflareWrapper:
     def __init__(self):
-        self.cf = CloudFlare.CloudFlare(token=settings.cf_api_token)
+        # v4 SDK automatically reads CLOUDFLARE_API_TOKEN env var if not passed,
+        # but we pass it explicitly from our settings.
+        self.client = Cloudflare(api_token=settings.cf_api_token)
 
     async def get_zones(self):
-        return await asyncio.to_thread(self.cf.zones.get)
+        # v4: client.zones.list()
+        # Returns a SyncV4PagePagination[Zone], we convert to list
+        # We run synchronous SDK calls in a separate thread to not block async loop
+        return await asyncio.to_thread(lambda: list(self.client.zones.list()))
 
     async def get_dns_records(self, zone_id):
-        return await asyncio.to_thread(self.cf.zones.dns_records.get, zone_id)
+        # v4: client.dns.records.list(zone_id=...)
+        return await asyncio.to_thread(lambda: list(self.client.dns.records.list(zone_id=zone_id)))
 
     async def get_dns_record_details(self, zone_id, record_id):
-        return await asyncio.to_thread(self.cf.zones.dns_records.get, zone_id, record_id)
+        # v4: client.dns.records.get(dns_record_id=..., zone_id=...)
+        return await asyncio.to_thread(
+            self.client.dns.records.get, 
+            dns_record_id=record_id, 
+            zone_id=zone_id
+        )
 
     async def create_dns_record(self, zone_id, data):
-        # data format: {'name': 'test.example.com', 'type': 'A', 'content': '1.2.3.4', 'proxied': False}
-        return await asyncio.to_thread(self.cf.zones.dns_records.post, zone_id, data=data)
+        # v4: client.dns.records.create(zone_id=..., **data)
+        # data needs to match RecordCreateParams
+        return await asyncio.to_thread(
+            self.client.dns.records.create,
+            zone_id=zone_id,
+            type=data['type'],
+            name=data['name'],
+            content=data['content'],
+            proxied=data['proxied'],
+            ttl=1 # Automatic
+        )
 
     async def update_dns_record(self, zone_id, record_id, data):
-        return await asyncio.to_thread(self.cf.zones.dns_records.put, zone_id, record_id, data=data)
+        # v4: client.dns.records.edit(dns_record_id=..., zone_id=..., **data)
+        return await asyncio.to_thread(
+            self.client.dns.records.edit,
+            dns_record_id=record_id,
+            zone_id=zone_id,
+            type=data['type'],
+            name=data['name'],
+            content=data['content'],
+            proxied=data['proxied'],
+            ttl=data.get('ttl', 1)
+        )
 
     async def delete_dns_record(self, zone_id, record_id):
-        return await asyncio.to_thread(self.cf.zones.dns_records.delete, zone_id, record_id)
+        # v4: client.dns.records.delete(dns_record_id=..., zone_id=...)
+        return await asyncio.to_thread(
+            self.client.dns.records.delete,
+            dns_record_id=record_id,
+            zone_id=zone_id
+        )
 
 cf = CloudflareWrapper()

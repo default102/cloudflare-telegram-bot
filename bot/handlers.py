@@ -33,7 +33,8 @@ async def list_zones(update: Update, context: ContextTypes.DEFAULT_TYPE):
         zones = await cf.get_zones()
         keyboard = []
         for zone in zones:
-            keyboard.append([InlineKeyboardButton(f"📂 {zone['name']}", callback_data=f"zone_{zone['id']}")])
+            # v4: attributes, not dict keys
+            keyboard.append([InlineKeyboardButton(f"📂 {zone.name}", callback_data=f"zone_{zone.id}")])
         
         keyboard.append([InlineKeyboardButton("🔄 刷新", callback_data="list_zones")])
         await query.edit_message_text("请选择要管理的域名：", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -53,10 +54,10 @@ async def list_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
         records = await cf.get_dns_records(zone_id)
         keyboard = []
         for r in records:
-            # icon based on proxy status
-            proxy_icon = "☁️" if r['proxied'] else "🛡️"
-            btn_text = f"{r['type']} | {r['name']} | {proxy_icon}"
-            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{zone_id}_{r['id']}")])
+            # v4: attributes
+            proxy_icon = "☁️" if r.proxied else "🛡️"
+            btn_text = f"{r.type} | {r.name} | {proxy_icon}"
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{zone_id}_{r.id}")])
         
         # Navigation
         keyboard.append([
@@ -78,17 +79,18 @@ async def record_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         r = await cf.get_dns_record_details(zone_id, record_id)
         
+        # v4: attributes
         details = (
-            f"**类型:** {r['type']}\n"
-            f"**名称:** `{r['name']}`\n"
-            f"**内容:** `{r['content']}`\n"
-            f"**TTL:** {r['ttl']}\n"
-            f"**代理:** {'是' if r['proxied'] else '否'}"
+            f"**类型:** {r.type}\n"
+            f"**名称:** `{r.name}`\n"
+            f"**内容:** `{r.content}`\n"
+            f"**TTL:** {r.ttl}\n"
+            f"**代理:** {'是' if r.proxied else '否'}"
         )
         
         keyboard = [
             [InlineKeyboardButton("✏️ 编辑内容", callback_data=f"editval_{zone_id}_{record_id}")],
-            [InlineKeyboardButton("🔄 切换代理状态", callback_data=f"toggleproxy_{zone_id}_{record_id}_{str(r['proxied']).lower()}")],
+            [InlineKeyboardButton("🔄 切换代理状态", callback_data=f"toggleproxy_{zone_id}_{record_id}_{str(r.proxied).lower()}")],
             [InlineKeyboardButton("🗑️ 删除", callback_data=f"del_{zone_id}_{record_id}")],
             [InlineKeyboardButton("🔙 返回", callback_data=f"zone_{zone_id}")]
         ]
@@ -116,17 +118,16 @@ async def save_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     record_id = context.user_data['edit_record_id']
     
     try:
-        # We need to fetch the existing record to keep other fields (Name, Type) same
-        # Cloudflare PUT requires all fields usually, or PATCH
-        # Let's fetch first
+        # Fetch existing to keep other fields
         existing = await cf.get_dns_record_details(zone_id, record_id)
         
+        # v4: attributes
         update_data = {
-            'type': existing['type'],
-            'name': existing['name'],
+            'type': existing.type,
+            'name': existing.name,
             'content': new_content,
-            'ttl': existing['ttl'],
-            'proxied': existing['proxied']
+            'ttl': existing.ttl,
+            'proxied': existing.proxied
         }
         
         await cf.update_dns_record(zone_id, record_id, update_data)
@@ -137,7 +138,7 @@ async def save_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ 操作已取消。")
+    await update.message.reply_text("❌ 操作已取消。" )
     return ConversationHandler.END
 
 # --- Toggle Proxy ---
@@ -149,11 +150,12 @@ async def toggle_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         existing = await cf.get_dns_record_details(zone_id, record_id)
+        # v4: attributes
         update_data = {
-            'type': existing['type'],
-            'name': existing['name'],
-            'content': existing['content'],
-            'ttl': existing['ttl'],
+            'type': existing.type,
+            'name': existing.name,
+            'content': existing.content,
+            'ttl': existing.ttl,
             'proxied': new_proxied
         }
         await cf.update_dns_record(zone_id, record_id, update_data)

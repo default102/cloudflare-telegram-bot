@@ -47,20 +47,32 @@ def main():
     edit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handlers.prompt_edit_content, pattern="^editval_")],
         states={
-            handlers.WAITING_FOR_CONTENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.save_content)]
+            handlers.WAITING_FOR_CONTENT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.save_content),
+                CallbackQueryHandler(handlers.cancel_callback, pattern="^cancel_conv$")
+            ]
         },
-        fallbacks=[CommandHandler("cancel", handlers.cancel)]
+        fallbacks=[CommandHandler("cancel", handlers.cancel), CallbackQueryHandler(handlers.cancel_callback, pattern="^cancel_conv$")]
     )
     
     # Add Record Conversation
     add_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(handlers.start_add_record, pattern="^add_")],
         states={
-            handlers.WAITING_FOR_RECORD_TYPE: [CallbackQueryHandler(handlers.receive_type, pattern="^type_")],
-            handlers.WAITING_FOR_RECORD_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.receive_name)],
-            handlers.WAITING_FOR_RECORD_CONTENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.receive_content_and_create)]
+            handlers.WAITING_FOR_RECORD_TYPE: [
+                CallbackQueryHandler(handlers.receive_type, pattern="^type_"),
+                CallbackQueryHandler(handlers.cancel_callback, pattern="^cancel_conv$")
+            ],
+            handlers.WAITING_FOR_RECORD_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.receive_name),
+                CallbackQueryHandler(handlers.cancel_callback, pattern="^cancel_conv$")
+            ],
+            handlers.WAITING_FOR_RECORD_CONTENT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.receive_content_and_create),
+                CallbackQueryHandler(handlers.cancel_callback, pattern="^cancel_conv$")
+            ]
         },
-        fallbacks=[CommandHandler("cancel", handlers.cancel)]
+        fallbacks=[CommandHandler("cancel", handlers.cancel), CallbackQueryHandler(handlers.cancel_callback, pattern="^cancel_conv$")]
     )
 
     application.add_handler(CommandHandler("start", handlers.start))

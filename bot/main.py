@@ -78,9 +78,13 @@ def main():
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("help", handlers.help_command))
     application.add_handler(CallbackQueryHandler(handlers.list_zones, pattern="^list_zones$"))
-    # Updated pattern to capture pagination: zone_<id> or zone_<id>_<page>
-    application.add_handler(CallbackQueryHandler(handlers.list_records, pattern="^zone_")) 
-    application.add_handler(CallbackQueryHandler(handlers.list_records_page, pattern="^page_")) # New pagination handler
+    
+    # Refactored Handlers
+    # 1. Clicking a zone -> Show Record Types
+    application.add_handler(CallbackQueryHandler(handlers.show_record_types, pattern="^zone_"))
+    # 2. Clicking a type -> List records of that type
+    application.add_handler(CallbackQueryHandler(handlers.list_records_by_type, pattern="^typeview_"))
+    
     application.add_handler(CallbackQueryHandler(handlers.record_details, pattern="^rec_"))
     application.add_handler(CallbackQueryHandler(handlers.toggle_proxy, pattern="^toggleproxy_"))
     application.add_handler(CallbackQueryHandler(handlers.delete_record_confirm, pattern="^del_"))

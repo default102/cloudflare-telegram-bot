@@ -21,9 +21,14 @@ class CloudflareWrapper:
             zone_id=zone_id
         )
 
-    async def get_dns_records(self, zone_id):
-        # v4: client.dns.records.list(zone_id=...)
-        return await asyncio.to_thread(lambda: list(self.client.dns.records.list(zone_id=zone_id)))
+    async def get_dns_records(self, zone_id, type=None):
+        # v4: client.dns.records.list(zone_id=..., type=...)
+        # We pass type only if it's provided
+        kwargs = {'zone_id': zone_id}
+        if type:
+            kwargs['type'] = type
+            
+        return await asyncio.to_thread(lambda: list(self.client.dns.records.list(**kwargs)))
 
     async def get_dns_record_details(self, zone_id, record_id):
         # v4: client.dns.records.get(dns_record_id=..., zone_id=...)

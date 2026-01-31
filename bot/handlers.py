@@ -4,6 +4,7 @@ from bot.config import settings
 from bot.cf_api import cf
 from loguru import logger
 import math
+from collections import Counter
 
 # States for ConversationHandler
 WAITING_FOR_CONTENT = 1
@@ -59,9 +60,7 @@ async def list_zones(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         for zone in zones:
-            # Get icon based on status, default to Globe 🌐
             icon = status_icons.get(zone.status, '🌐')
-            # v4: attributes, not dict keys
             keyboard.append([InlineKeyboardButton(f"{icon} {zone.name}", callback_data=f"zone_{zone.id}")])
         
         keyboard.append([InlineKeyboardButton("🔄 刷新列表", callback_data="list_zones")])
@@ -70,10 +69,12 @@ async def list_zones(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error listing zones: {e}")
         await query.edit_message_text(f"❌ 获取域名列表失败：{str(e)}")
 
-async def list_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- Level 1: List Record Types ---
+async def show_record_types(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer("正在获取记录统计...")
     
+    # Handle entry from list_zones or back button
     if query.data.startswith("zone_"):
         zone_id = query.data.split("_")[1]
         context.user_data['current_zone_id'] = zone_id
@@ -84,87 +85,115 @@ async def list_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ 会话已过期，请重新列出域名")
         return
 
-    await show_records_page(update, context, zone_id, page=0)
-
-async def list_records_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    page = int(query.data.split("_")[1])
-    zone_id = context.user_data.get('current_zone_id')
-    
-    if not zone_id:
-        await query.edit_message_text("❌ 会话已过期，请重新列出域名")
-        return
-
-    await show_records_page(update, context, zone_id, page)
-
-async def show_records_page(update: Update, context: ContextTypes.DEFAULT_TYPE, zone_id, page):
-    PAGE_SIZE = 10
     try:
-        # Fetch zone details to get the zone name for simplification
+        # Get zone details for name
         zone_info = await cf.get_zone_details(zone_id)
-        zone_name = zone_info.name
         
+        # Fetch all records to count types
         records = await cf.get_dns_records(zone_id)
-        total_records = len(records)
-        total_pages = math.ceil(total_records / PAGE_SIZE)
         
-        start_idx = page * PAGE_SIZE
-        end_idx = start_idx + PAGE_SIZE
-        current_records = records[start_idx:end_idx]
+        # Count types
+        type_counts = Counter([r.type for r in records])
+        
+        # Predefined common types + any others found
+        common_types = ['A', 'CNAME', 'TXT', 'AAAA', 'MX', 'NS']
+        # Merge discovered types
+        all_types = sorted(list(set(common_types + list(type_counts.keys()))))
         
         keyboard = []
-        for r in current_records:
-            status_icon = "🚀" if r.proxied else "📍"
+        row = []
+        for t in all_types:
+            count = type_counts.get(t, 0)
+            # Only show types that have records, OR the common ones even if 0 (optional, let's show all common)
+            # To keep it clean, maybe only show types with count > 0 OR strictly the common set.
+            # User request: "A, AAAA, CNAME etc classification"
             
-            # Simplify Name: remove zone suffix
-            # e.g., "www.example.com" -> "www"
-            # "example.com" -> "@"
-            full_name = r.name
-            if full_name == zone_name:
-                display_name = "@"
-            elif full_name.endswith(f".{zone_name}"):
-                display_name = full_name[:-len(zone_name)-1] # remove .zone_name
-            else:
-                display_name = full_name
+            # Let's show buttons for types that exist + common ones.
+            # Button format: "A (5)" or "AAAA (0)"
+            btn_text = f"{t} ({count})"
+            row.append(InlineKeyboardButton(btn_text, callback_data=f"typeview_{t}"))
             
-            # Truncate if still too long
-            if len(display_name) > 20:
-                display_name = display_name[:18] + ".."
-            
-            # Pad type for visual alignment (approximate)
-            # A usually 1 char, CNAME 5 chars. Max ~5 is good.
-            # Adding spaces. Note: Telegram font isn't fixed width, so this is best effort.
-            record_type = r.type
-            if len(record_type) < 5:
-                record_type = record_type.ljust(5)
-            
-            # Layout: Status  Type  Name
-            btn_text = f"{status_icon}  {record_type}  {display_name}"
-            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{r.id}")])
+            if len(row) == 2: # 2 buttons per row
+                keyboard.append(row)
+                row = []
         
-        nav_buttons = []
-        if page > 0:
-            nav_buttons.append(InlineKeyboardButton("⬅️ 上一页", callback_data=f"page_{page-1}"))
-        nav_buttons.append(InlineKeyboardButton(f"{page+1}/{total_pages if total_pages > 0 else 1}", callback_data="noop"))
-        if end_idx < total_records:
-            nav_buttons.append(InlineKeyboardButton("下一页 ➡️", callback_data=f"page_{page+1}"))
-        
-        keyboard.append(nav_buttons)
+        if row:
+            keyboard.append(row)
+            
+        # Add "Add Record" and "Back"
         keyboard.append([
             InlineKeyboardButton("➕ 添加记录", callback_data=f"add_{zone_id}"),
             InlineKeyboardButton("🔙 返回域名列表", callback_data="list_zones")
         ])
         
-        await update.callback_query.edit_message_text(
-            f"📝 **DNS 记录列表** (共 {total_records} 条)\n当前域名: `{zone_name}`", 
-            reply_markup=InlineKeyboardMarkup(keyboard),
+        await query.edit_message_text(
+            f"📂 域名: `{zone_info.name}`\n👇 **请选择 DNS 记录类型**：", 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
             parse_mode="Markdown"
         )
+        
     except Exception as e:
-        logger.error(f"Error listing records: {e}")
-        await update.callback_query.edit_message_text(f"❌ 获取记录失败：{str(e)}")
+        logger.error(f"Error listing types: {e}")
+        await query.edit_message_text(f"❌ 获取失败：{str(e)}")
+
+# --- Level 2: List Records by Type ---
+async def list_records_by_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # callback: typeview_A
+    record_type = query.data.split("_")[1]
+    zone_id = context.user_data.get('current_zone_id')
+    
+    if not zone_id:
+        await query.edit_message_text("❌ 会话已过期，请重新列出域名")
+        return
+    
+    try:
+        # Fetch zone details for simplification
+        zone_info = await cf.get_zone_details(zone_id)
+        zone_name = zone_info.name
+        
+        # Fetch records filtered by type
+        records = await cf.get_dns_records(zone_id, type=record_type)
+        
+        keyboard = []
+        for r in records:
+            status_icon = "🚀" if r.proxied else "📍"
+            
+            # Simplify Name
+            full_name = r.name
+            if full_name == zone_name:
+                display_name = "@"
+            elif full_name.endswith(f".{zone_name}"):
+                display_name = full_name[:-len(zone_name)-1]
+            else:
+                display_name = full_name
+            
+            # Truncate
+            if len(display_name) > 30: # Allow longer since we don't show type text
+                display_name = display_name[:28] + ".."
+            
+            # Layout: [Status] Name
+            # No type text needed as we are in that category
+            btn_text = f"{status_icon} {display_name}"
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{r.id}")])
+        
+        # Navigation
+        keyboard.append([
+            InlineKeyboardButton("🔙 返回分类", callback_data=f"zone_{zone_id}"), # Go back to type list
+            InlineKeyboardButton("🔙 返回域名列表", callback_data="list_zones")
+        ])
+        
+        await query.edit_message_text(
+            f"📂 域名: `{zone_name}`\n📑 **{record_type} 记录列表** (共 {len(records)} 条)：", 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error listing records by type: {e}")
+        await query.edit_message_text(f"❌ 获取记录失败：{str(e)}")
 
 async def record_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -192,11 +221,14 @@ async def record_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"────────────────"
         )
         
+        # Back button logic: Try to go back to the same type list if possible
+        # For simplicity, we go back to the type list of this record's type
+        
         keyboard = [
             [InlineKeyboardButton("✏️ 编辑内容", callback_data=f"editval_{record_id}"),
              InlineKeyboardButton("🔄 切换代理", callback_data=f"toggleproxy_{record_id}_{str(r.proxied).lower()}")],
             [InlineKeyboardButton("🗑️ 删除记录", callback_data=f"del_{record_id}")],
-            [InlineKeyboardButton("🔙 返回列表", callback_data=f"page_0")]
+            [InlineKeyboardButton("🔙 返回列表", callback_data=f"typeview_{r.type}")] 
         ]
         
         await query.edit_message_text(details, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -308,10 +340,18 @@ async def delete_record_execute(update: Update, context: ContextTypes.DEFAULT_TY
     zone_id = context.user_data.get('current_zone_id')
     
     try:
+        # We need the record details to know which type list to go back to, 
+        # but the record will be deleted.
+        # So we default to going back to the MAIN category list (zone_id).
         await cf.delete_dns_record(zone_id, record_id)
         await query.answer("✅ 记录已成功删除", show_alert=True)
-        query.data = f"zone_{zone_id}"
-        await list_records(update, context)
+        
+        # Return to Category List (show_record_types)
+        # We need to simulate the "zone_{id}" data pattern or call the function directly
+        # Re-using show_record_types requires context.user_data['current_zone_id'] which is set
+        query.data = f"zone_{zone_id}" 
+        await show_record_types(update, context)
+        
     except Exception as e:
         await query.answer(f"❌ 删除失败：{str(e)}", show_alert=True)
 

@@ -1,16 +1,37 @@
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
+from telegram.error import InvalidToken
 from bot.config import settings
 from bot import handlers
 import logging
+import sys
 
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
 def main():
-    application = ApplicationBuilder().token(settings.tg_token).build()
+    # 1. Print Startup Info
+    logger.info("🚀 Starting Cloudflare DNS Bot...")
+    logger.info(f"👤 Allowed User ID: {settings.allowed_user_id}")
+    
+    # Mask tokens for safety in logs
+    masked_tg = settings.tg_token[:5] + "..." + settings.tg_token[-5:] if settings.tg_token and len(settings.tg_token) > 10 else "INVALID"
+    masked_cf = settings.cf_api_token[:5] + "..." + settings.cf_api_token[-5:] if settings.cf_api_token and len(settings.cf_api_token) > 10 else "INVALID"
+    
+    logger.info(f"🔑 TG Token: {masked_tg}")
+    logger.info(f"☁️ CF Token: {masked_cf}")
+
+    try:
+        application = ApplicationBuilder().token(settings.tg_token).build()
+    except InvalidToken:
+        logger.error("❌ Fatal Error: Invalid Telegram Bot Token. Please check your TG_TOKEN environment variable.")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"❌ Fatal Error initializing bot: {e}")
+        sys.exit(1)
 
     # Edit Conversation
     edit_conv = ConversationHandler(
@@ -43,8 +64,19 @@ def main():
     application.add_handler(edit_conv)
     application.add_handler(add_conv)
 
-    print("Bot is running...")
-    application.run_polling()
+    logger.info("✅ Bot is running and polling for updates...")
+    
+    try:
+        application.run_polling()
+    except Exception as e:
+        logger.error(f"❌ Runtime Error: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        logger.error(f"❌ Unhandled Exception: {e}")
+        sys.exit(1)

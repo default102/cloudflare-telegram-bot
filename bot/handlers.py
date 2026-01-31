@@ -159,23 +159,18 @@ async def list_records_by_type(update: Update, context: ContextTypes.DEFAULT_TYP
         
         keyboard = []
         for r in records:
-            status_icon = "🚀" if r.proxied else "📍"
+            # Icons: ☁️ (Cloud/Proxy) vs 🔘 (Button/DNS Only)
+            status_icon = "☁️" if r.proxied else "🔘"
             
-            # Simplify Name
-            full_name = r.name
-            if full_name == zone_name:
-                display_name = "@"
-            elif full_name.endswith(f".{zone_name}"):
-                display_name = full_name[:-len(zone_name)-1]
-            else:
-                display_name = full_name
+            # Full Name (requested by user)
+            display_name = r.name
             
-            # Truncate
-            if len(display_name) > 30: # Allow longer since we don't show type text
-                display_name = display_name[:28] + ".."
+            # Truncate if extremely long (Telegram button limit is generous but finite)
+            # Typically 40 chars is safe for UI
+            if len(display_name) > 40: 
+                display_name = display_name[:38] + ".."
             
             # Layout: [Status] Name
-            # No type text needed as we are in that category
             btn_text = f"{status_icon} {display_name}"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{r.id}")])
         

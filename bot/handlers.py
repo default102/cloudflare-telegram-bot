@@ -46,9 +46,18 @@ async def list_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    zone_id = query.data.split("_")[1]
-    # Save zone_id to context for "Add Record" flow
-    context.user_data['current_zone_id'] = zone_id
+    # Check if we came from list_zones (data="zone_...")
+    # or if we are refreshing/back navigation where zone_id might be stored differently
+    if query.data.startswith("zone_"):
+        zone_id = query.data.split("_")[1]
+        context.user_data['current_zone_id'] = zone_id
+    else:
+        # Fallback if zone_id is already in context (e.g. back from add record)
+        zone_id = context.user_data.get('current_zone_id')
+
+    if not zone_id:
+        await query.edit_message_text("❌ 会话已过期，请重新列出域名。")
+        return
 
     try:
         records = await cf.get_dns_records(zone_id)
@@ -57,7 +66,9 @@ async def list_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # v4: attributes
             proxy_icon = "☁️" if r.proxied else "🛡️"
             btn_text = f"{r.type} | {r.name} | {proxy_icon}"
-            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{zone_id}_{r.id}")])
+            # Shortened callback data: rec_{record_id}
+            # We rely on context.user_data['current_zone_id']
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{r.id}")])
         
         # Navigation
         keyboard.append([
@@ -74,7 +85,13 @@ async def record_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    _, zone_id, record_id = query.data.split("_")
+    # data format: rec_{record_id}
+    record_id = query.data.split("_")[1]
+    zone_id = context.user_data.get('current_zone_id')
+
+    if not zone_id:
+        await query.edit_message_text("❌ 会话已过期，请重新列出域名。")
+        return
     
     try:
         r = await cf.get_dns_record_details(zone_id, record_id)
@@ -88,10 +105,11 @@ async def record_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"**代理:** {'是' if r.proxied else '否'}"
         )
         
+        # Shortened callback data
         keyboard = [
-            [InlineKeyboardButton("✏️ 编辑内容", callback_data=f"editval_{zone_id}_{record_id}")],
-            [InlineKeyboardButton("🔄 切换代理状态", callback_data=f"toggleproxy_{zone_id}_{record_id}_{str(r.proxied).lower()}")],
-            [InlineKeyboardButton("🗑️ 删除", callback_data=f"del_{zone_id}_{record_id}")],
+            [InlineKeyboardButton("✏️ 编辑内容", callback_data=f"editval_{record_id}")],
+            [InlineKeyboardButton("🔄 切换代理状态", callback_data=f"toggleproxy_{record_id}_{str(r.proxied).lower()}")],
+            [InlineKeyboardButton("🗑️ 删除", callback_data=f"del_{record_id}")],
             [InlineKeyboardButton("🔙 返回", callback_data=f"zone_{zone_id}")]
         ]
         
@@ -104,7 +122,9 @@ async def record_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def prompt_edit_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    _, zone_id, record_id = query.data.split("_")
+    # data: editval_{record_id}
+    record_id = query.data.split("_")[1]
+    zone_id = context.user_data.get('current_zone_id')
     
     context.user_data['edit_zone_id'] = zone_id
     context.user_data['edit_record_id'] = record_id
@@ -138,13 +158,18 @@ async def save_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ 操作已取消。" )
+    await update.message.reply_text("❌ 操作已取消。")
     return ConversationHandler.END
 
 # --- Toggle Proxy ---
 async def toggle_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    _, zone_id, record_id, current_state = query.data.split("_")
+    # data: toggleproxy_{record_id}_{state}
+    parts = query.data.split("_")
+    record_id = parts[1]
+    current_state = parts[2]
+    zone_id = context.user_data.get('current_zone_id')
+
     current_proxied = current_state == 'true'
     new_proxied = not current_proxied
 
@@ -171,22 +196,27 @@ async def toggle_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delete_record_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    _, zone_id, record_id = query.data.split("_")
+    # data: del_{record_id}
+    record_id = query.data.split("_")[1]
+    zone_id = context.user_data.get('current_zone_id')
     
     keyboard = [
-        [InlineKeyboardButton("✅ 确认删除", callback_data=f"confirmdel_{zone_id}_{record_id}")],
-        [InlineKeyboardButton("❌ 取消", callback_data=f"rec_{zone_id}_{record_id}")]
+        [InlineKeyboardButton("✅ 确认删除", callback_data=f"confirmdel_{record_id}")],
+        [InlineKeyboardButton("❌ 取消", callback_data=f"rec_{record_id}")]
     ]
     await query.edit_message_text("⚠️ 您确定要删除此记录吗？", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def delete_record_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    _, zone_id, record_id = query.data.split("_")
+    # data: confirmdel_{record_id}
+    record_id = query.data.split("_")[1]
+    zone_id = context.user_data.get('current_zone_id')
     
     try:
         await cf.delete_dns_record(zone_id, record_id)
         await query.answer("记录已删除")
         # Go back to list
+        # Reuse logic to list records
         query.data = f"zone_{zone_id}"
         await list_records(update, context)
     except Exception as e:

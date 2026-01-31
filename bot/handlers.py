@@ -102,6 +102,10 @@ async def list_records_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_records_page(update: Update, context: ContextTypes.DEFAULT_TYPE, zone_id, page):
     PAGE_SIZE = 10
     try:
+        # Fetch zone details to get the zone name for simplification
+        zone_info = await cf.get_zone_details(zone_id)
+        zone_name = zone_info.name
+        
         records = await cf.get_dns_records(zone_id)
         total_records = len(records)
         total_pages = math.ceil(total_records / PAGE_SIZE)
@@ -111,28 +115,33 @@ async def show_records_page(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         current_records = records[start_idx:end_idx]
         
         keyboard = []
-        # Icon mapping for record types
-        type_icons = {
-            'A': '🅰️',
-            'AAAA': '4️⃣',
-            'CNAME': '🔗',
-            'TXT': '📝',
-            'MX': '📧',
-            'NS': '🆔'
-        }
-
         for r in current_records:
-            # Status icon: 🚀 for Proxied, 📍 for DNS Only
             status_icon = "🚀" if r.proxied else "📍"
-            # Type icon
-            type_icon = type_icons.get(r.type, '📄')
             
-            display_name = r.name
+            # Simplify Name: remove zone suffix
+            # e.g., "www.example.com" -> "www"
+            # "example.com" -> "@"
+            full_name = r.name
+            if full_name == zone_name:
+                display_name = "@"
+            elif full_name.endswith(f".{zone_name}"):
+                display_name = full_name[:-len(zone_name)-1] # remove .zone_name
+            else:
+                display_name = full_name
+            
+            # Truncate if still too long
             if len(display_name) > 20:
                 display_name = display_name[:18] + ".."
             
-            # Layout: [Status] Type Icon Name
-            btn_text = f"{status_icon} {type_icon} {display_name}"
+            # Pad type for visual alignment (approximate)
+            # A usually 1 char, CNAME 5 chars. Max ~5 is good.
+            # Adding spaces. Note: Telegram font isn't fixed width, so this is best effort.
+            record_type = r.type
+            if len(record_type) < 5:
+                record_type = record_type.ljust(5)
+            
+            # Layout: Status  Type  Name
+            btn_text = f"{status_icon}  {record_type}  {display_name}"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{r.id}")])
         
         nav_buttons = []
@@ -149,7 +158,7 @@ async def show_records_page(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         ])
         
         await update.callback_query.edit_message_text(
-            f"📝 **DNS 记录列表** (共 {total_records} 条)", 
+            f"📝 **DNS 记录列表** (共 {total_records} 条)\n当前域名: `{zone_name}`", 
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )

@@ -14,6 +14,13 @@ class CloudflareWrapper:
         # We run synchronous SDK calls in a separate thread to not block async loop
         return await asyncio.to_thread(lambda: list(self.client.zones.list()))
 
+    async def get_zone_details(self, zone_id):
+        # v4: client.zones.get(zone_id=...)
+        return await asyncio.to_thread(
+            self.client.zones.get,
+            zone_id=zone_id
+        )
+
     async def get_dns_records(self, zone_id):
         # v4: client.dns.records.list(zone_id=...)
         return await asyncio.to_thread(lambda: list(self.client.dns.records.list(zone_id=zone_id)))

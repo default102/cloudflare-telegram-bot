@@ -42,16 +42,30 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_zones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("正在获取域名列表")
+    await query.answer("正在获取域名列表...")
     
     try:
         zones = await cf.get_zones()
         keyboard = []
-        for zone in zones:
-            keyboard.append([InlineKeyboardButton(f"📂 {zone.name}", callback_data=f"zone_{zone.id}")])
         
-        keyboard.append([InlineKeyboardButton("🔄 刷新", callback_data="list_zones")])
-        await query.edit_message_text("📂 **选择要管理的域名**：", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        # Status Icon Mapping
+        status_icons = {
+            'active': '✅',
+            'pending': '⏳',
+            'initializing': '🔄',
+            'moved': '⏩',
+            'deleted': '❌',
+            'deactivated': '🚫'
+        }
+
+        for zone in zones:
+            # Get icon based on status, default to Globe 🌐
+            icon = status_icons.get(zone.status, '🌐')
+            # v4: attributes, not dict keys
+            keyboard.append([InlineKeyboardButton(f"{icon} {zone.name}", callback_data=f"zone_{zone.id}")])
+        
+        keyboard.append([InlineKeyboardButton("🔄 刷新列表", callback_data="list_zones")])
+        await query.edit_message_text("📂 **选择要管理的域名**：\n(✅ 正常 | ⏳ 待验证 | 🚫以此类推)", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Error listing zones: {e}")
         await query.edit_message_text(f"❌ 获取域名列表失败：{str(e)}")
@@ -97,13 +111,28 @@ async def show_records_page(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         current_records = records[start_idx:end_idx]
         
         keyboard = []
+        # Icon mapping for record types
+        type_icons = {
+            'A': '🅰️',
+            'AAAA': '4️⃣',
+            'CNAME': '🔗',
+            'TXT': '📝',
+            'MX': '📧',
+            'NS': '🆔'
+        }
+
         for r in current_records:
-            status_icon = "☁️" if r.proxied else "🛡"
+            # Status icon: 🚀 for Proxied, 📍 for DNS Only
+            status_icon = "🚀" if r.proxied else "📍"
+            # Type icon
+            type_icon = type_icons.get(r.type, '📄')
+            
             display_name = r.name
             if len(display_name) > 20:
                 display_name = display_name[:18] + ".."
             
-            btn_text = f"[{status_icon}] {r.type}  {display_name}"
+            # Layout: [Status] Type Icon Name
+            btn_text = f"{status_icon} {type_icon} {display_name}"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"rec_{r.id}")])
         
         nav_buttons = []

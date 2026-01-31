@@ -1,5 +1,6 @@
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters, Application
 from telegram.error import InvalidToken
+from telegram import BotCommand
 from bot.config import settings
 from bot import handlers
 import logging
@@ -11,6 +12,15 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+async def post_init(application: Application):
+    """Set up the bot's menu commands."""
+    commands = [
+        BotCommand("start", "🏠 主菜单 / 刷新"),
+        BotCommand("help", "💡 帮助信息"),
+        BotCommand("cancel", "❌ 取消当前操作"),
+    ]
+    await application.bot.set_my_commands(commands)
 
 def main():
     # 1. Print Startup Info
@@ -25,7 +35,7 @@ def main():
     logger.info(f"☁️ CF Token: {masked_cf}")
 
     try:
-        application = ApplicationBuilder().token(settings.tg_token).build()
+        application = ApplicationBuilder().token(settings.tg_token).post_init(post_init).build()
     except InvalidToken:
         logger.error("❌ Fatal Error: Invalid Telegram Bot Token. Please check your TG_TOKEN environment variable.")
         sys.exit(1)
@@ -54,8 +64,11 @@ def main():
     )
 
     application.add_handler(CommandHandler("start", handlers.start))
+    application.add_handler(CommandHandler("help", handlers.help_command))
     application.add_handler(CallbackQueryHandler(handlers.list_zones, pattern="^list_zones$"))
-    application.add_handler(CallbackQueryHandler(handlers.list_records, pattern="^zone_"))
+    # Updated pattern to capture pagination: zone_<id> or zone_<id>_<page>
+    application.add_handler(CallbackQueryHandler(handlers.list_records, pattern="^zone_")) 
+    application.add_handler(CallbackQueryHandler(handlers.list_records_page, pattern="^page_")) # New pagination handler
     application.add_handler(CallbackQueryHandler(handlers.record_details, pattern="^rec_"))
     application.add_handler(CallbackQueryHandler(handlers.toggle_proxy, pattern="^toggleproxy_"))
     application.add_handler(CallbackQueryHandler(handlers.delete_record_confirm, pattern="^del_"))
